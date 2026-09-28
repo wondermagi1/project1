@@ -1,5 +1,7 @@
 # 代码助手 Agent（Code Assistant Agent）
 
+> 源代码仓库：<https://github.com/wondermagi1/project1>
+
 一个用 Python 标准库实现的代码助手 Agent，面向「代码审查」场景，同时支持代码解释、单元测试生成与代码运行验证。
 
 - **零第三方依赖**：只用标准库，`Python 3.10+` 开箱即用，不需要 `pip install`。
