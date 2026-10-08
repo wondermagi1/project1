@@ -73,10 +73,10 @@
       "presentation": { "reveal": "always", "panel": "shared", "clear": true }
     },
     {
-      "label": "打包提交文件（需填学号姓名）",
+      "label": "打包项目源码",
       "type": "shell",
       "command": "python",
-      "args": ["scripts/package.py", "--sid", "学号", "--name", "姓名", "--force"],
+      "args": ["scripts/package.py", "--force"],
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": []
     }

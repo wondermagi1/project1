@@ -7,7 +7,7 @@
   compatible-mode、vLLM、Ollama 等），内置超时、重试与指数退避。
 * :class:`MockLLM` —— 离线规则引擎。没有 API Key 时用它驱动 Agent，
   依然完整走通「输入 → 推理 → 工具调用 → 输出」的多步循环，
-  便于课堂演示、单元测试与无网络环境验收。
+  便于本地试用、单元测试与无网络环境验证。
 """
 
 from __future__ import annotations

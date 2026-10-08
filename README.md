@@ -12,7 +12,7 @@
 python webui.py --provider mock --open
 ```
 
-浏览器打开 `http://127.0.0.1:8000/`，模型选择“离线”，点击“审查问题样例”。页面会展示工具调用过程、审查报告及下载按钮。上传文本代码文件后可选择审查或解释，同名上传会保留原文件。
+浏览器打开 `http://127.0.0.1:8000/`，首页可扫描项目。进入“代码助手”，选择“离线规则引擎”，点击“审查问题样例”。页面会展示工具调用过程、审查报告及下载按钮。上传文本代码文件后可选择审查或解释，同名上传会保留原文件。
 
 命令行体验：
 
@@ -68,7 +68,7 @@ python main.py --check-api
 python webui.py --open
 ```
 
-`--check-api` 会实际发送一次请求，可能消耗模型额度。网页选择“在线”或“自动”后使用本地服务配置。密钥只由后端读取。提交包排除 `.env` 及其常见变体，保留空白示例。
+`--check-api` 会实际发送一次请求，可能消耗模型额度。网页选择“在线”或“自动”后使用本地服务配置。密钥只由后端读取。源码归档排除 `.env` 及其常见变体，保留空白示例。
 
 ## 功能与能力边界
 
@@ -81,7 +81,7 @@ python webui.py --open
 | refactor 重构 | 基于分析提出修改并可生成副本 | 有限的文本整理、重构副本和差异 |
 | ask 通用问答 | 围绕工作区与用户问题调用工具 | 目录、搜索等预设流程 |
 
-`auto` 自动识别模式。离线测试骨架包含跳过项，测试通过不代表业务逻辑已覆盖。静态评分是规则扣分得到的参考值，不是老师评分，也不是正确性证明。
+`auto` 自动识别模式。离线测试骨架包含跳过项，测试通过不代表业务逻辑已覆盖。静态评分是规则扣分得到的参考值，用于辅助定位问题，不能证明程序正确性。
 
 十个工具：`read_file`、`list_dir`、`search_in_files`、`analyze_code`、`write_file`、`run_python`、`run_tests`、`diff_files`、`project_scan`、`git_diff`。
 
@@ -91,7 +91,7 @@ python webui.py --open
 python main.py --provider mock --json "审查 examples/clean_sample.py"
 python main.py --provider mock --export generated/review.md "审查 examples/buggy_sample.py"
 python main.py --provider mock --export generated/review.json "审查 examples/buggy_sample.py"
-python main.py --provider mock --session homework
+python main.py --provider mock --session project-review
 ```
 
 `--json` 只向标准输出写入 JSON。`--export` 保存任务、实际模型来源、结果、结束状态及执行轨迹，只支持一次性任务，拒绝覆盖已有报告。网页结果下方可以下载 Markdown 和 JSON。
@@ -124,28 +124,19 @@ node tests/test_webui.cjs
 
 测试覆盖 Agent 循环、模式选择、工具边界、会话裁剪、模型错误与重试、HTTP 和流式响应、导出及 Markdown 特殊输入。以本次运行结果为准，示例报告不替代实际验证。
 
-## 作业要求对应
-
-| 作业要求 / 评分项 | 项目实现与证据 |
-| --- | --- |
-| 输入、推理、工具调用、输出循环 | `agent/agent.py`，网页实时步骤及 JSON 轨迹 |
-| 至少一种工具 | 十个工具统一注册，见 `agent/tools.py` |
-| CLI 或简单 Web 交互 | `main.py` 和 `webui.py` 两个入口 |
-| LLM 调用与 Prompt 设计 | `agent/llm.py`、`agent/prompts.py`、`agent/modes.py` |
-| 推荐的记忆、错误处理、重试 | JSON 会话、按回合裁剪、结构化工具错误、指数退避 |
-| 功能完整性 40% | 五个方向，共用工具，失败和边界场景有回归测试 |
-| Agent 架构 30% | 模型适配器、工具注册表、记忆、交互层分离 |
-| 代码质量 20% | 标准库实现、类型标注、自动化测试 |
-| 文档 10% | 本文、`Design.md`、演示脚本、验收记录 |
-
-## 提交
+## 源码打包
 
 ```bash
-python scripts/package.py --sid 你的学号 --name 你的姓名 --output dist
+python scripts/package.py
+python scripts/package.py --package-name code-assistant-agent-1.0.0 --output dist
 ```
 
-生成 `dist/学号姓名.zip`。打包前检查核心文档存在，排除会话、上传、生成产物、缓存、密钥配置与旧压缩包，并检查 200 MB 大小限制。
+默认生成 `dist/code-assistant-agent.zip`。可通过 `--package-name` 指定归档名称，`--output` 指定输出目录。打包前检查核心文档存在，排除会话、上传、生成产物、缓存、密钥配置与旧压缩包。覆盖已有归档时添加 `--force`。
 
-源代码仓库：[wondermagi1/project1](https://github.com/wondermagi1/project1)。提交前需要填写自己的**学号、姓名**。若平台要求 RAR 格式，可将核对后的同名文件夹用压缩软件转为 RAR。原始 PPT 标注提交截止为 **2026-10-07 24:00**，延期或补交安排以课程通知为准。
+## 项目文档
 
-建议先阅读 [设计文档](Design.md)，再按 [一分钟演示脚本](docs/demo_script.md) 录制。
+- [设计文档](Design.md)：架构、工具协议、记忆与错误处理。
+- [工作流指南](docs/workflow.md)：项目扫描、改动审查、测试与报告导出。
+- [验证记录](docs/validation.md)：自动化测试与浏览器验证结果。
+
+源代码仓库：[wondermagi1/project1](https://github.com/wondermagi1/project1)。
