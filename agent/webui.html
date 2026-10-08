@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>代码助手 Agent · 工程工作台</title>
+<link rel="stylesheet" href="/static/workbench.css"></head><body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><div class="logo">&lt;/&gt;</div><div>代码助手 Agent<small>ENGINEERING WORKSPACE</small></div></div>
+  <div class="eyebrow workspace-label">WORKSPACE</div><div class="project-name" id="project-name">正在加载项目…</div>
+  <nav class="nav" aria-label="工作台导航">
+    <button class="active" data-view="overview"><span>▦</span>项目概览</button>
+    <button data-view="assistant"><span>⌘</span>代码助手</button>
+    <button data-view="git"><span>⑂</span>Git 改动</button>
+  </nav>
+  <div class="side-heading"><span class="eyebrow">项目文件 <span id="file-count"></span></span><button id="refresh-files" title="刷新项目文件" aria-label="刷新项目文件">↻</button></div>
+  <input class="file-search" id="file-search" placeholder="搜索文件…" aria-label="搜索项目文件">
+  <div class="file-list" id="file-list"><p class="muted">读取文件索引…</p></div>
+  <div class="side-bottom"><span class="online-dot"></span>本地工作区<div style="margin-top:4px">文件预览与质量扫描不会执行代码</div></div>
+</aside>
+<div class="shell">
+<header class="topbar"><div class="breadcrumb">工作空间 <span style="margin:0 9px;color:#bcc5d6">/</span> <b id="view-label">项目概览</b></div><div class="top-actions"><span class="status" id="status">正在连接服务…</span><button id="new-chat">＋ 新建会话</button></div></header>
+<section id="view-overview" class="view active">
+<div class="page stretch">
+  <div class="page-title"><div><div class="eyebrow">PROJECT OVERVIEW</div><h1>项目质量，一目了然。</h1><p>从项目全貌到具体改动，把问题定位到每一行代码。</p></div><div class="action-group"><button id="scan-changed">扫描改动</button><button class="primary" id="scan-project">⌕ 扫描项目</button></div></div>
+  <div id="notice" class="notice" role="status"></div>
+  <div class="metrics">
+    <div class="metric"><div class="metric-label">源代码文件 <span>⌘</span></div><div class="metric-value" id="metric-files">—</div><div class="metric-note" id="metric-files-note">读取项目索引</div></div>
+    <div class="metric blue"><div class="metric-label">平均规则评分 <span>◈</span></div><div class="metric-value" id="metric-score">—</div><div class="metric-note">静态规则评分，满分 100</div></div>
+    <div class="metric red"><div class="metric-label">高优先级问题 <span>!</span></div><div class="metric-value" id="metric-high">—</div><div class="metric-note">优先检查正确性与安全风险</div></div>
+    <div class="metric"><div class="metric-label">已扫描代码行 <span>≡</span></div><div class="metric-value" id="metric-lines">—</div><div class="metric-note" id="metric-lines-note">扫描后显示实际数据</div></div>
+  </div>
+  <div class="content-grid">
+    <section class="panel"><div class="panel-header"><h2>问题列表 <span class="pill" id="finding-count">未扫描</span></h2><div class="findings-toolbar"><select id="severity-filter" aria-label="筛选问题严重度"><option value="all">全部等级</option><option value="high">高优先级</option><option value="medium">中优先级</option><option value="low">低优先级</option></select><button id="export-scan" class="chip-btn" disabled>导出扫描</button></div></div><div id="findings"><div class="empty-results"><div class="empty-symbol">⌕</div><strong>从一次项目扫描开始</strong>自动汇总跨文件问题，点击问题即可查看源码。<br>默认扫描最多 100 个源文件。</div></div><div class="summary-note" id="scan-note">Python 使用 AST 分析，其余语言使用通用文本规则。</div></section>
+    <aside class="stack"><section class="panel"><div class="panel-header"><h2>项目构成</h2><span class="pill">LIVE</span></div><div class="panel-body" id="project-languages">加载中…</div></section><section class="panel"><div class="panel-header"><h2>推荐工作流</h2></div><div class="panel-body"><div class="workflow"><span class="workflow-num">01</span><div><b>扫描，定位问题</b><p>全量检查或只看 Git 改动。</p></div></div><div class="workflow"><span class="workflow-num">02</span><div><b>交给助手，深入分析</b><p>选择文件，审查或解释代码。</p></div></div><div class="workflow"><span class="workflow-num">03</span><div><b>运行测试，保留证据</b><p>验证修改，导出结果与轨迹。</p></div></div></div></section></aside>
+  </div>
+  <section class="panel test-panel"><div class="panel-header"><h2>测试运行 <span class="pill">unittest</span></h2><div class="action-group"><input id="test-path" class="test-path" value="tests" aria-label="测试目录" style="width:150px;font-size:11px;padding:5px 8px"><button id="run-project-tests" class="chip-btn">▷ 运行测试</button></div></div><div id="test-result" class="test-status">指定测试目录后运行。此操作会在本机执行项目测试代码。</div></section>
+  <div class="bottom-note">结果来自实际文件与工具输出。静态评分不能替代测试或人工审查。</div>
+</div></section>
+<section id="view-assistant" class="view">
+<div class="chat-toolbar">
+<label class="field">模型 <select id="provider" aria-label="模型"><option value="auto">自动</option><option value="openai">在线模型</option><option value="mock">离线规则引擎</option></select></label>
+<label class="field">模式 <select id="mode" aria-label="模式"><option value="auto">自动识别</option><option value="review">代码审查</option><option value="explain">代码解释</option><option value="generate">代码生成</option><option value="test">测试生成</option><option value="refactor">重构建议</option><option value="ask">通用问答</option></select></label>
+<label class="field">会话 <input id="session" type="text" value="web" aria-label="会话"></label>
+<select id="history-select" aria-label="历史会话"><option value="">恢复历史会话…</option></select>
+</div>
+<main class="chat-main" id="main"><div class="thread" id="thread"><div class="empty" id="empty"><div class="empty-logo">&lt;/&gt;</div><h2>从理解代码，到验证改动。</h2><p>选择左侧文件，或描述你的工程任务。助手会展示每一步工具调用。</p><div class="examples"><button class="chip-btn" data-prompt="扫描项目">扫描整个项目</button><button class="chip-btn" data-prompt="审查 Git 改动">审查 Git 改动</button><button class="chip-btn" data-prompt="审查 examples/buggy_sample.py">审查问题样例</button><button class="chip-btn" data-prompt="解释 examples/clean_sample.py">解释规范样例</button></div></div></div></main>
+<footer class="composer-wrap"><div class="filebar" id="filebar"></div><div class="composer"><label class="attach" title="上传代码文件（最多 2 MB）">＋<input type="file" id="file" hidden></label><textarea id="message" rows="1" aria-label="任务内容" placeholder="描述需求，或添加代码文件…"></textarea><button class="primary" id="send">发送 ↑</button></div><div class="composer-hint">Enter 发送 · Shift + Enter 换行 · 离线模式使用规则与骨架，在线模式使用配置的真实模型</div></footer>
+</section>
+<section id="view-git" class="view"><div class="page stretch"><div class="page-title"><div><div class="eyebrow">CHANGE REVIEW</div><h1>关注这一次改动。</h1><p>查看未暂存、已暂存和新增文件，提交前核对修改内容。</p></div><div class="action-group"><button id="ask-git">交给助手审查</button><button class="primary" id="refresh-git">↻ 刷新改动</button></div></div><section class="panel"><div class="panel-header"><h2 id="git-branch">Git 工作区</h2><span id="git-count" class="pill">待读取</span></div><div class="panel-body"><div id="git-note" class="muted" style="font-size:12px">点击“刷新改动”读取 Git 状态。</div><div class="git-files" id="git-files"></div><pre class="diff" id="git-diff" hidden></pre></div></section></div></section>
+</div></div>
+<dialog class="dialog" id="file-dialog"><div class="dialog-head"><strong id="preview-title">文件预览</strong><button id="close-preview" aria-label="关闭文件预览">×</button></div><pre class="code-preview" id="preview-content"></pre><div class="dialog-foot"><span id="preview-note">只读预览</span><div class="action-group"><button id="explain-file">解释代码</button><button class="primary" id="review-file">交给助手审查</button></div></div></dialog>
+  <script src="/static/workbench.js" defer></script>
+</body></html>

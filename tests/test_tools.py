@@ -186,9 +186,72 @@ class ToolTests(unittest.TestCase):
         # 写文件不属于「执行代码」，在非只读模式下仍然可用。
         self.assertTrue(registry.execute("write_file", {"path": "ok.txt", "content": "x"})["ok"])
 
+    # ------------------------------------------------------------ run_tests
+    def test_run_tests_reports_success(self) -> None:
+        (self.root / "test_ok.py").write_text(
+            "import unittest\n"
+            "\n"
+            "\n"
+            "class SampleTest(unittest.TestCase):\n"
+            "    def test_add(self):\n"
+            "        self.assertEqual(1 + 1, 2)\n",
+            encoding="utf-8",
+        )
+        result = self.registry.execute("run_tests", {"path": "test_ok.py"})
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["tests_run"], 1)
+        self.assertEqual(result["passed_count"], 1)
+        self.assertEqual(result["failure_count"], 0)
+
+    def test_run_tests_reports_failures_without_failing_the_tool(self) -> None:
+        (self.root / "test_bad.py").write_text(
+            "import unittest\n"
+            "\n"
+            "\n"
+            "class SampleTest(unittest.TestCase):\n"
+            "    def test_boom(self):\n"
+            "        self.assertEqual(1, 2)\n",
+            encoding="utf-8",
+        )
+        result = self.registry.execute("run_tests", {"path": "test_bad.py"})
+        self.assertTrue(result["ok"], "用例失败时工具本身仍应算执行成功")
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["failure_count"], 1)
+        self.assertIn("test_boom", result["failures"][0])
+        self.assertEqual(result["passed_count"], 0)
+
+    def test_run_tests_missing_path(self) -> None:
+        result = self.registry.execute("run_tests", {"path": "no_such_file.py"})
+        self.assertFalse(result["ok"])
+
+    # ----------------------------------------------------------- diff_files
+    def test_diff_files_reports_changes(self) -> None:
+        result = self.registry.execute(
+            "diff_files", {"left": "notes.txt", "content": "hello\nworld!\nnew line\n"}
+        )
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["changed"])
+        self.assertGreaterEqual(result["added_lines"], 1)
+        self.assertIn("-world", result["diff"])
+        self.assertIn("+world!", result["diff"])
+
+    def test_diff_files_identical_content(self) -> None:
+        result = self.registry.execute(
+            "diff_files", {"left": "notes.txt", "content": "hello\nworld\n"}
+        )
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["changed"])
+        self.assertIn("没有差异", result["diff"])
+
+    def test_diff_files_requires_a_second_side(self) -> None:
+        result = self.registry.execute("diff_files", {"left": "notes.txt"})
+        self.assertFalse(result["ok"])
+        self.assertIn("right", result["error"])
+
     def test_tool_specs_are_valid_openai_schema(self) -> None:
         specs = self.registry.specs()
-        self.assertEqual(len(specs), 6)
+        self.assertEqual(len(specs), 10)
         for spec in specs:
             self.assertEqual(spec["type"], "function")
             self.assertIn("name", spec["function"])

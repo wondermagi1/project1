@@ -22,6 +22,54 @@ from typing import Any, Dict
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL = "gpt-4o-mini"
 ENV_PREFIX = "CODE_AGENT_"
+ENV_FILE_NAME = ".env"
+
+
+def load_env_file(path: Path, override: bool = False) -> Dict[str, str]:
+    """读取 ``.env`` 文件并写入 ``os.environ``。
+
+    只做最必要的解析：跳过空行与 ``#`` 注释、支持 ``export KEY=VALUE``、
+    自动去掉值两侧的引号。默认**不覆盖**已经存在的环境变量，
+    这样命令行 / 系统环境变量的优先级依然高于 ``.env``。
+    """
+
+    loaded: Dict[str, str] = {}
+    if not Path(path).is_file():
+        return loaded
+    try:
+        content = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return loaded
+
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.lower().startswith("export "):
+            line = line[7:].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if not key:
+            continue
+        if not override and os.environ.get(key):
+            continue
+        os.environ[key] = value
+        loaded[key] = value
+    return loaded
+
+
+def load_dotenv(search_dirs: "list[Path] | tuple[Path, ...]") -> Dict[str, str]:
+    """依次在给定目录中查找 ``.env``，返回被写入的键值对。"""
+
+    loaded: Dict[str, str] = {}
+    for directory in search_dirs:
+        candidate = Path(directory) / ENV_FILE_NAME
+        if candidate.is_file():
+            loaded.update(load_env_file(candidate))
+    return loaded
 
 
 @dataclass
@@ -34,7 +82,7 @@ class AgentConfig:
     provider: str = "auto"
     workspace: Path = field(default_factory=Path.cwd)
     session_dir: Path = field(default_factory=lambda: Path(".agent_sessions"))
-    max_iterations: int = 6
+    max_iterations: int = 8
     max_retries: int = 3
     retry_backoff: float = 1.5
     temperature: float = 0.2
@@ -65,6 +113,10 @@ class AgentConfig:
     @classmethod
     def from_env(cls, **overrides: Any) -> "AgentConfig":
         """从环境变量构造配置，并用 ``overrides`` 覆盖（``None`` 表示不覆盖）。"""
+
+        # 优先读取项目内的 .env（当前目录 → 工作区目录），方便不配置系统环境变量。
+        workspace_hint = Path(overrides.get("workspace") or Path.cwd()).expanduser()
+        load_dotenv([Path.cwd(), workspace_hint])
 
         env = os.environ.get
         config = cls(

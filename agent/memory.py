@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -55,7 +56,7 @@ class ConversationMemory:
     def messages(self) -> List[Dict[str, Any]]:
         """返回消息副本，避免调用方意外修改内部状态。"""
 
-        return [dict(message) for message in self._messages]
+        return deepcopy(self._messages)
 
     def add(self, message: Dict[str, Any]) -> None:
         self._messages.append(dict(message))
@@ -74,6 +75,17 @@ class ConversationMemory:
         """清空对话，但保留 system prompt。"""
 
         self._messages = [m for m in self._messages if m.get("role") == "system"]
+        if self.autosave:
+            self.save()
+
+    def set_system_prompt(self, prompt: str) -> None:
+        """替换系统提示词（切换任务模式时使用），历史对话保持不变。"""
+
+        self.system_prompt = prompt
+        self._messages = [m for m in self._messages if m.get("role") != "system"]
+        if prompt:
+            self._messages.insert(0, {"role": "system", "content": prompt})
+        self._trim()
         if self.autosave:
             self.save()
 
@@ -160,6 +172,8 @@ class ConversationMemory:
                 data = json.loads(target.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 return memory
+            if not isinstance(data, dict):
+                return memory
             messages = data.get("messages")
             if isinstance(messages, list):
                 loaded = [m for m in messages if isinstance(m, dict) and m.get("role")]
@@ -180,6 +194,8 @@ class ConversationMemory:
                 data = json.loads(item.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 continue
+            if not isinstance(data, dict):
+                continue
             sessions.append(
                 {
                     "session_id": data.get("session_id", item.stem),
@@ -194,8 +210,12 @@ class ConversationMemory:
         head = [m for m in self._messages if m.get("role") == "system"]
         body = [m for m in self._messages if m.get("role") != "system"]
         limit = max(4, self.max_messages - len(head))
-        body = body[-limit:]
-        # 丢掉裁剪后残留在开头的 tool / assistant 消息，保证回话从 user 开始。
+        # 只按完整回合裁剪。最新回合即使超出软上限，也不能丢掉正在处理的任务。
         while body and body[0].get("role") != "user":
             body.pop(0)
+        while len(body) > limit:
+            next_turn = next((i for i, m in enumerate(body[1:], 1) if m.get("role") == "user"), None)
+            if next_turn is None:
+                break
+            body = body[next_turn:]
         self._messages = head + body

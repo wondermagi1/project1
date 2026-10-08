@@ -15,6 +15,7 @@ from .agent import AgentResult, AgentStep, CodeAgent
 from .config import AgentConfig
 from .llm import LLMError, MockLLM, OpenAICompatibleClient, create_client
 from .memory import ConversationMemory
+from .modes import MODES, TaskMode, build_system_prompt, detect_mode, list_modes, resolve_mode
 from .tools import ToolRegistry, build_default_registry
 
 __all__ = [
@@ -24,11 +25,17 @@ __all__ = [
     "CodeAgent",
     "ConversationMemory",
     "LLMError",
+    "MODES",
     "MockLLM",
     "OpenAICompatibleClient",
+    "TaskMode",
     "ToolRegistry",
+    "build_system_prompt",
     "build_default_registry",
     "create_client",
+    "detect_mode",
+    "list_modes",
+    "resolve_mode",
 ]
 
 __version__ = "1.0.0"

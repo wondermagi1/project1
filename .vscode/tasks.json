@@ -1,0 +1,84 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "审查样例文件（离线模式）",
+      "type": "shell",
+      "command": "python",
+      "args": ["main.py", "--provider", "mock", "审查 examples/buggy_sample.py"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
+    },
+    {
+      "label": "解释样例文件",
+      "type": "shell",
+      "command": "python",
+      "args": ["main.py", "--provider", "mock", "--mode", "explain", "解释 examples/buggy_sample.py"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "生成测试并运行（测试生成模式）",
+      "type": "shell",
+      "command": "python",
+      "args": ["main.py", "--provider", "mock", "--mode", "test", "为 examples/buggy_sample.py 生成单元测试"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
+    },
+    {
+      "label": "给出重构建议（重构模式）",
+      "type": "shell",
+      "command": "python",
+      "args": ["main.py", "--provider", "mock", "--mode", "refactor", "重构 examples/buggy_sample.py"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "交互模式（多轮对话）",
+      "type": "shell",
+      "command": "python",
+      "args": ["main.py", "--provider", "mock"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "查看可用工具",
+      "type": "shell",
+      "command": "python",
+      "args": ["main.py", "--show-tools"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "启动 Web 界面",
+      "type": "shell",
+      "command": "python",
+      "args": ["webui.py"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "运行全部单元测试",
+      "type": "shell",
+      "command": "python",
+      "args": ["-m", "unittest", "discover", "-s", "tests", "-t", ".", "-v"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "group": "test",
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
+    },
+    {
+      "label": "打包提交文件（需填学号姓名）",
+      "type": "shell",
+      "command": "python",
+      "args": ["scripts/package.py", "--sid", "学号", "--name", "姓名", "--force"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    }
+  ]
+}

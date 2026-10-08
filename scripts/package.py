@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import zipfile
 from pathlib import Path
 from typing import Iterator, List, Optional
@@ -21,10 +22,11 @@ EXCLUDE_DIRS = {
     "__pycache__",
     ".agent_sessions",
     ".test_workspaces",
+    "uploads",
+    "generated",
     ".venv",
     "venv",
     ".idea",
-    ".vscode",
     ".pytest_cache",
     ".mypy_cache",
     "dist",
@@ -32,21 +34,37 @@ EXCLUDE_DIRS = {
 }
 EXCLUDE_FILES = {".env", ".DS_Store", "desktop.ini"}
 EXCLUDE_SUFFIXES = {".pyc", ".pyo", ".zip", ".rar", ".7z", ".log"}
+MAX_PACKAGE_BYTES = 200 * 1024 * 1024
+
+
+def validate_package_name(name: str) -> str:
+    if not name or name in (".", "..") or re.search(r'[<>:"/\\|?*\x00-\x1f]', name) or name.endswith((".", " ")):
+        raise ValueError("包名称不能为空或包含路径、文件名非法字符")
+    reserved = {"CON", "PRN", "AUX", "NUL", *[f"COM{i}" for i in range(1, 10)], *[f"LPT{i}" for i in range(1, 10)]}
+    if name.split(".")[0].upper() in reserved:
+        raise ValueError("包名称不能使用系统保留名称")
+    return name
 
 
 def iter_files(root: Path) -> Iterator[Path]:
     for path in sorted(root.rglob("*")):
-        if path.is_dir():
+        if path.is_dir() or path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
             continue
         relative = path.relative_to(root)
         if any(part in EXCLUDE_DIRS for part in relative.parts):
             continue
         if path.name in EXCLUDE_FILES or path.suffix.lower() in EXCLUDE_SUFFIXES:
             continue
+        if path.name.startswith(".env") and path.name != ".env.example":
+            continue
         yield path
 
 
 def build_package(root: Path, target: Path, package_name: str, force: bool = False) -> int:
+    validate_package_name(package_name)
+    missing = [name for name in ("README.md", "Design.md", "main.py", "webui.py") if not (root / name).is_file()]
+    if missing:
+        raise ValueError("缺少提交文件：" + ", ".join(missing))
     if target.exists() and not force:
         raise SystemExit(f"目标文件已存在：{target}\n如需覆盖请加 --force")
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -55,6 +73,8 @@ def build_package(root: Path, target: Path, package_name: str, force: bool = Fal
         for path in iter_files(root):
             archive.write(path, arcname=f"{package_name}/{path.relative_to(root).as_posix()}")
             count += 1
+    if target.stat().st_size >= MAX_PACKAGE_BYTES:
+        raise ValueError(f"提交包超过 200 MB，请精简文件后重新打包：{target}")
     return count
 
 
@@ -67,11 +87,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     root = Path(__file__).resolve().parents[1]
-    package_name = f"{args.sid.strip()}{args.name.strip()}"
+    try:
+        package_name = validate_package_name(f"{args.sid.strip()}{args.name.strip()}")
+    except ValueError as exc:
+        parser.error(str(exc))
     output_dir = Path(args.output).expanduser().resolve() if args.output else root.parent
     target = output_dir / f"{package_name}.zip"
 
-    count = build_package(root, target, package_name, force=args.force)
+    try:
+        count = build_package(root, target, package_name, force=args.force)
+    except (ValueError, OSError) as exc:
+        parser.error(str(exc))
     size_kb = target.stat().st_size / 1024
     print(f"已生成提交包：{target}")
     print(f"包含 {count} 个文件，压缩后 {size_kb:.1f} KB（上限 200 MB）")

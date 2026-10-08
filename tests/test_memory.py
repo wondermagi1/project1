@@ -110,6 +110,32 @@ class MemoryTests(unittest.TestCase):
         self.assertEqual(len(sessions), 1)
         self.assertEqual(sessions[0]["session_id"], "one")
 
+    def test_current_long_turn_survives_trimming(self) -> None:
+        memory = ConversationMemory(system_prompt="sys", max_messages=8)
+        memory.add({"role": "user", "content": "old"})
+        memory.add({"role": "assistant", "content": "old result"})
+        memory.add({"role": "user", "content": "current task"})
+        for i in range(12):
+            memory.add({"role": "assistant", "tool_calls": [{"id": str(i)}]})
+            memory.add({"role": "tool", "tool_call_id": str(i), "content": "{}"})
+        messages = memory.messages()
+        self.assertEqual(messages[1]["content"], "current task")
+        self.assertEqual(len([m for m in messages if m["role"] == "tool"]), 12)
+        memory.add({"role": "user", "content": "next"})
+        self.assertEqual(len(memory), 2)
+
+    def test_non_object_session_is_ignored(self) -> None:
+        (self.root / "bad.json").write_text("[]", encoding="utf-8")
+        self.assertEqual(len(ConversationMemory.load("bad", self.root, "sys")), 1)
+        self.assertEqual(ConversationMemory.list_sessions(self.root), [])
+
+    def test_message_copy_does_not_mutate_tool_calls(self) -> None:
+        memory = ConversationMemory()
+        memory.add({"role": "user", "content": "hi"})
+        memory.add({"role": "assistant", "tool_calls": [{"id": "original"}]})
+        memory.messages()[1]["tool_calls"][0]["id"] = "changed"
+        self.assertEqual(memory.messages()[1]["tool_calls"][0]["id"], "original")
+
 
 if __name__ == "__main__":
     unittest.main()

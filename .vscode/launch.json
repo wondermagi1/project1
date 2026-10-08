@@ -1,0 +1,115 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "1. 审查样例文件（离线模式，无需 API Key）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "args": ["--provider", "mock", "审查", "examples/buggy_sample.py"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "2. 审查整洁样例（应得 100 分）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "args": ["--provider", "mock", "审查", "examples/clean_sample.py"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "3. 代码解释（结构讲解 + 注释建议 diff）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "args": ["--provider", "mock", "--mode", "explain", "解释", "examples/buggy_sample.py"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "4. 代码生成（写骨架文件并运行验证）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "args": ["--provider", "mock", "--mode", "generate", "写一个函数：把秒数格式化成 1h2m3s"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "5. 测试生成（写测试文件并用 run_tests 运行）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "args": ["--provider", "mock", "--mode", "test", "为 examples/buggy_sample.py 生成单元测试"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "6. 重构建议（坏味道清单 + diff + 重构副本）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "args": ["--provider", "mock", "--mode", "refactor", "重构 examples/buggy_sample.py"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "7. 交互模式（多轮对话，支持 /mode 切换）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "args": ["--provider", "mock"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "8. 查看可用工具与当前配置",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "args": ["--show-tools"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "9. 接入真实大模型（需先在 .env 填 API Key）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "args": ["--provider", "openai", "审查", "examples/buggy_sample.py"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "10. 运行全部单元测试",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "unittest",
+      "args": ["discover", "-s", "tests", "-t", ".", "-v"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "11. 启动 Web 界面（浏览器里对话）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/webui.py",
+      "args": ["--open"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    }
+  ]
+}

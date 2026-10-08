@@ -57,7 +57,9 @@ class AgentTests(unittest.TestCase):
     def tearDown(self) -> None:
         remove_workspace(self.root)
 
-    def _make_agent(self, client: Any = None, on_event: Any = None) -> CodeAgent:
+    def _make_agent(
+        self, client: Any = None, on_event: Any = None, mode: str = "auto"
+    ) -> CodeAgent:
         memory = ConversationMemory(system_prompt="sys", session_dir=self.root, autosave=False)
         return CodeAgent(
             config=self.config,
@@ -65,6 +67,7 @@ class AgentTests(unittest.TestCase):
             registry=self.registry,
             memory=memory,
             on_event=on_event,
+            mode=mode,
         )
 
     def test_mock_review_runs_full_tool_loop(self) -> None:
@@ -108,7 +111,8 @@ class AgentTests(unittest.TestCase):
         result = agent.run("一直调用工具")
         self.assertEqual(result.stopped, "max_iterations")
         self.assertEqual(result.iterations, self.config.max_iterations)
-        self.assertEqual(client.calls, self.config.max_iterations)
+        # 迭代上限后会再尝试一次「不带工具的强制总结」，因此调用次数可能多 1 次
+        self.assertGreaterEqual(client.calls, self.config.max_iterations)
 
     def test_llm_error_is_handled_with_hint(self) -> None:
         agent = self._make_agent(client=_FailingClient())
@@ -148,6 +152,69 @@ class AgentTests(unittest.TestCase):
         agent = self._make_agent()
         result = agent.run("   ")
         self.assertEqual(result.stopped, "error")
+
+    # ------------------------------------------------- 五个方向的模式化行为
+    def test_result_reports_effective_mode(self) -> None:
+        agent = self._make_agent()
+        self.assertEqual(agent.run("审查 demo.py").mode, "review")
+        self.assertEqual(agent.run("解释 demo.py").mode, "explain")
+        self.assertEqual(agent.run("写一个 quicksort 函数").mode, "generate")
+
+    def test_explicit_mode_is_used_even_without_keywords(self) -> None:
+        agent = self._make_agent(mode="refactor")
+        result = agent.run("看看 demo.py")
+        self.assertEqual(result.mode, "refactor")
+        self.assertIn("重构建议", result.answer)
+
+    def test_set_mode_updates_system_prompt(self) -> None:
+        agent = self._make_agent()
+        agent.set_mode("test")
+        system_messages = [m for m in agent.memory.messages() if m["role"] == "system"]
+        self.assertEqual(len(system_messages), 1)
+        self.assertIn("测试生成", system_messages[0]["content"])
+
+    def test_test_mode_writes_and_runs_test_file(self) -> None:
+        agent = self._make_agent(mode="test")
+        result = agent.run("为 demo.py 生成单元测试")
+        tool_names = [step.title.replace("调用工具 ", "") for step in result.steps if step.kind == "tool"]
+        self.assertIn("write_file", tool_names)
+        self.assertIn("run_tests", tool_names)
+        self.assertTrue((self.root / "test_demo.py").is_file(), "应当真的写出测试文件")
+        self.assertIn("已生成的测试文件", result.answer)
+        self.assertIn("实际运行结果", result.answer)
+        self.assertIn("unittest", result.answer)
+
+    def test_refactor_mode_writes_copy_and_diff(self) -> None:
+        (self.root / "legacy.py").write_text(
+            '"""遗留代码。"""\n\n\ndef normalize(value=None):\n    """规范化。"""\n\n    if value == None:\n        return ""\n    return value\n',
+            encoding="utf-8",
+        )
+        agent = self._make_agent(mode="refactor")
+        result = agent.run("重构 legacy.py")
+        tool_names = [step.title.replace("调用工具 ", "") for step in result.steps if step.kind == "tool"]
+        self.assertIn("diff_files", tool_names)
+        self.assertTrue((self.root / "legacy_refactored.py").is_file())
+        self.assertIn("is None", (self.root / "legacy_refactored.py").read_text(encoding="utf-8"))
+        self.assertIn("坏味道清单", result.answer)
+        self.assertIn("已安全落地的重构", result.answer)
+
+    def test_generate_mode_writes_skeleton_and_verifies(self) -> None:
+        agent = self._make_agent(mode="generate")
+        result = agent.run("写一个 quicksort 函数")
+        tool_names = [step.title.replace("调用工具 ", "") for step in result.steps if step.kind == "tool"]
+        self.assertIn("write_file", tool_names)
+        self.assertIn("run_python", tool_names)
+        generated = self.root / "generated" / "quicksort.py"
+        self.assertTrue(generated.is_file(), "骨架文件应当写入 generated/ 目录")
+        self.assertIn("def quicksort", generated.read_text(encoding="utf-8"))
+        self.assertIn("代码生成", result.answer)
+
+    def test_explain_mode_proposes_docstrings(self) -> None:
+        agent = self._make_agent(mode="explain")
+        result = agent.run("解释 demo.py")
+        tool_names = [step.title.replace("调用工具 ", "") for step in result.steps if step.kind == "tool"]
+        self.assertIn("diff_files", tool_names)
+        self.assertIn("建议补充的注释", result.answer)
 
     def test_run_intent_reports_disabled_execution(self) -> None:
         config = AgentConfig(workspace=self.root, provider="mock", allow_exec=False)

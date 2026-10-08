@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 import os
 import re
@@ -21,6 +22,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from .analysis import analyze_source, summarize_findings
 from .config import AgentConfig
+from .project import ProjectTools
 
 SKIP_DIRS = {
     ".git",
@@ -108,7 +110,7 @@ class ToolRegistry:
         args = arguments if isinstance(arguments, dict) else {}
         try:
             tool = self.get(name)
-            if tool.name == "run_python" and not self.config.allow_exec:
+            if tool.name in ("run_python", "run_tests") and not self.config.allow_exec:
                 raise ToolError("代码执行已被禁用（--no-exec）")
             if tool.dangerous and self.config.read_only:
                 raise ToolError(f"当前处于只读模式，已拒绝执行 `{name}`")
@@ -447,6 +449,139 @@ class CodeTools:
         report["severity_summary"] = summarize_findings(report.get("findings", []))
         return report
 
+    # ------------------------------------------------------------ run_tests
+    def run_tests(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """用 unittest 真正跑一遍测试，并返回结构化结果。"""
+
+        target = self._resolve(args.get("path") or ".", must_exist=True)
+        pattern = str(args.get("pattern") or "").strip() or None
+        if target.is_file():
+            start_dir = target.parent
+            pattern = pattern or target.name
+        else:
+            start_dir = target
+            pattern = pattern or "test*.py"
+
+        try:
+            timeout = min(max(float(args.get("timeout") or 60.0), 5.0), 300.0)
+        except (TypeError, ValueError):
+            timeout = 60.0
+
+        command = [
+            sys.executable,
+            "-X",
+            "utf8",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            str(start_dir),
+            "-t",
+            str(start_dir),
+            "-p",
+            pattern,
+            "-v",
+        ]
+        env = dict(os.environ)
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+
+        started = time.perf_counter()
+        try:
+            proc = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+                cwd=str(self.workspace),
+                env=env,
+            )
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "error": f"测试执行超时（超过 {timeout} 秒）", "timeout": timeout}
+
+        duration = round((time.perf_counter() - started) * 1000, 1)
+        output = ((proc.stdout or "") + (proc.stderr or "")).strip()
+        ran_match = re.search(r"Ran (\d+) tests? in", output)
+        failures = re.findall(r"^(?:FAIL|ERROR): (.+)$", output, re.M)
+        skipped_match = re.search(r"skipped=(\d+)", output)
+        total = int(ran_match.group(1)) if ran_match else None
+        skipped = int(skipped_match.group(1)) if skipped_match else 0
+        passed = (total - len(failures) - skipped) if total is not None else None
+        truncated = self._truncate(output, 6000)
+
+        return {
+            # returncode 1 表示「有用例失败」，但工具本身执行成功，Agent 应据此修复而不是当成工具故障
+            "ok": proc.returncode in (0, 1),
+            "passed": proc.returncode == 0,
+            "returncode": proc.returncode,
+            "target": self._display(start_dir),
+            "pattern": pattern,
+            "tests_run": total,
+            "passed_count": passed,
+            "skipped": skipped,
+            "failure_count": len(failures),
+            "failures": [item.strip() for item in failures[:20]],
+            "duration_ms": duration,
+            "output": truncated["text"],
+            "output_truncated": truncated["truncated"],
+        }
+
+    # ------------------------------------------------------------ diff_files
+    def diff_files(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """生成两个版本之间的 unified diff（用于展示重构/注释建议）。"""
+
+        left_raw = args.get("left") or args.get("path")
+        if not left_raw:
+            raise ToolError("需要提供 `left`（原始文件路径）")
+        left_path = self._resolve(left_raw, must_exist=True)
+        if left_path.is_dir():
+            raise ToolError(f"{self._display(left_path)} 是目录，请指定具体文件")
+        before = left_path.read_text(encoding="utf-8", errors="replace").splitlines()
+
+        right_raw = args.get("right")
+        content = args.get("content")
+        if right_raw:
+            right_path = self._resolve(right_raw, must_exist=True)
+            after = right_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            right_label = self._display(right_path)
+        elif content is not None:
+            after = str(content).splitlines()
+            right_label = "<建议版本>"
+        else:
+            raise ToolError("需要提供 `right`（对比文件）或 `content`（建议内容）")
+
+        try:
+            context = max(0, min(int(args.get("context") or 3), 20))
+        except (TypeError, ValueError):
+            context = 3
+
+        diff_lines = list(
+            difflib.unified_diff(
+                before,
+                after,
+                fromfile=f"a/{self._display(left_path)}",
+                tofile=f"b/{right_label}",
+                lineterm="",
+                n=context,
+            )
+        )
+        added = sum(1 for line in diff_lines if line.startswith("+") and not line.startswith("+++"))
+        removed = sum(1 for line in diff_lines if line.startswith("-") and not line.startswith("---"))
+        text = "\n".join(diff_lines) if diff_lines else "（两处内容完全一致，没有差异）"
+        truncated = self._truncate(text, 8000)
+        return {
+            "ok": True,
+            "left": self._display(left_path),
+            "right": right_label,
+            "changed": bool(diff_lines),
+            "added_lines": added,
+            "removed_lines": removed,
+            "diff": truncated["text"],
+            "truncated": truncated["truncated"],
+        }
+
 
 # --------------------------------------------------------------------- 装配
 def build_default_registry(config: AgentConfig) -> ToolRegistry:
@@ -454,6 +589,9 @@ def build_default_registry(config: AgentConfig) -> ToolRegistry:
 
     tools = CodeTools(config)
     registry = ToolRegistry(config)
+    project = ProjectTools(config)
+    registry.register(Tool("project_scan", "跨文件扫描项目质量，可只分析 Git 改动文件，输出问题、行号与严重度汇总。不会执行代码。", {"type": "object", "properties": {"max_files": {"type": "integer"}, "changed_only": {"type": "boolean"}}}, project.scan))
+    registry.register(Tool("git_diff", "只读查看当前 Git 仓库暂存与未暂存改动，用于提交前审查。", {"type": "object", "properties": {"include_diff": {"type": "boolean"}}}, project.git_diff))
 
     registry.register(
         Tool(
@@ -546,6 +684,47 @@ def build_default_registry(config: AgentConfig) -> ToolRegistry:
             },
             func=tools.run_python,
             dangerous=True,
+        )
+    )
+
+    registry.register(
+        Tool(
+            name="run_tests",
+            description=(
+                "用 unittest 实际运行测试并返回结构化结果（用例数、通过数、失败项、原始输出）。"
+                "可以传入测试文件或目录；生成测试后应当调用它来验证。"
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "测试文件或目录，默认为工作区根目录"},
+                    "pattern": {"type": "string", "description": "文件名匹配模式，例如 test_*.py"},
+                    "timeout": {"type": "number", "description": "超时秒数，默认 60 秒"},
+                },
+            },
+            func=tools.run_tests,
+            dangerous=True,
+        )
+    )
+
+    registry.register(
+        Tool(
+            name="diff_files",
+            description=(
+                "生成 unified diff：比较两个文件，或比较「文件」与「建议内容」。"
+                "用于在重构、补注释时展示具体改动，避免直接覆盖原文件。"
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "left": {"type": "string", "description": "原始文件路径"},
+                    "right": {"type": "string", "description": "用于对比的另一个文件路径"},
+                    "content": {"type": "string", "description": "建议的新内容（与 left 对比）"},
+                    "context": {"type": "integer", "description": "上下文行数，默认 3"},
+                },
+                "required": ["left"],
+            },
+            func=tools.diff_files,
         )
     )
 

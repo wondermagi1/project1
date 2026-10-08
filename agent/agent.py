@@ -16,7 +16,7 @@ from typing import Any, Callable, Dict, List, Optional
 from .config import AgentConfig
 from .llm import LLMError, create_client
 from .memory import ConversationMemory
-from .prompts import SYSTEM_PROMPT
+from .modes import AUTO_MODE, build_system_prompt, detect_mode, resolve_mode
 from .tools import ToolRegistry, build_default_registry
 
 
@@ -36,12 +36,14 @@ class AgentResult:
     steps: List[AgentStep] = field(default_factory=list)
     iterations: int = 0
     stopped: str = "final"  # final / max_iterations / error
+    mode: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "answer": self.answer,
             "iterations": self.iterations,
             "stopped": self.stopped,
+            "mode": self.mode,
             "steps": [
                 {"kind": step.kind, "title": step.title, "detail": step.detail, "ok": step.ok}
                 for step in self.steps
@@ -59,18 +61,32 @@ class CodeAgent:
         registry: Optional[ToolRegistry] = None,
         memory: Optional[ConversationMemory] = None,
         on_event: Optional[Callable[[AgentStep], None]] = None,
-        system_prompt: str = SYSTEM_PROMPT,
+        system_prompt: Optional[str] = None,
+        mode: str = AUTO_MODE,
     ) -> None:
         self.config = config or AgentConfig()
+        self.mode = resolve_mode(mode)
+        prompt = system_prompt or build_system_prompt(self.mode)
         self.client = client or create_client(self.config)
         self.registry = registry or build_default_registry(self.config)
-        self.memory = memory or ConversationMemory(
-            session_id="default",
-            session_dir=self.config.session_dir,
-            system_prompt=system_prompt,
-            autosave=True,
-        )
+        if memory is None:
+            self.memory = ConversationMemory(
+                session_id="default",
+                session_dir=self.config.session_dir,
+                system_prompt=prompt,
+                autosave=True,
+            )
+        else:
+            self.memory = memory
         self.on_event = on_event or (lambda step: None)
+
+    # ------------------------------------------------------------------ 模式
+    def set_mode(self, mode: str) -> str:
+        """切换任务模式，并同步更新记忆中的系统提示词。"""
+
+        self.mode = resolve_mode(mode)
+        self.memory.set_system_prompt(build_system_prompt(self.mode))
+        return self.mode
 
     # ------------------------------------------------------------------ 主循环
     def run(self, user_input: str) -> AgentResult:
@@ -78,7 +94,9 @@ class CodeAgent:
         if not text:
             return AgentResult(answer="请输入需要处理的内容。", stopped="error")
 
-        self.memory.add({"role": "user", "content": text})
+        effective_mode = self.mode if self.mode != AUTO_MODE else detect_mode(text)
+        payload = text if self.mode == AUTO_MODE else f"[mode:{self.mode}]\n{text}"
+        self.memory.add({"role": "user", "content": payload})
         steps: List[AgentStep] = []
 
         for iteration in range(1, self.config.max_iterations + 1):
@@ -90,7 +108,13 @@ class CodeAgent:
                 self.on_event(step)
                 answer = self._format_llm_error(exc)
                 self.memory.add({"role": "assistant", "content": answer})
-                return AgentResult(answer=answer, steps=steps, iterations=iteration, stopped="error")
+                return AgentResult(
+                    answer=answer,
+                    steps=steps,
+                    iterations=iteration,
+                    stopped="error",
+                    mode=effective_mode,
+                )
 
             if response.content:
                 step = AgentStep(kind="llm", title="模型输出", detail=response.content)
@@ -100,7 +124,13 @@ class CodeAgent:
             if not response.tool_calls:
                 answer = response.content or "（模型没有返回内容，请重试或换一种说法）"
                 self.memory.add({"role": "assistant", "content": answer})
-                return AgentResult(answer=answer, steps=steps, iterations=iteration, stopped="final")
+                return AgentResult(
+                    answer=answer,
+                    steps=steps,
+                    iterations=iteration,
+                    stopped="final",
+                    mode=effective_mode,
+                )
 
             api_calls = [
                 {
@@ -147,10 +177,42 @@ class CodeAgent:
                 "建议：缩小任务范围（例如只审查单个文件），或用 `--max-iterations` 提高上限。",
             ]
         )
+        # 尽力而为：再要一次「不带工具」的总结，避免迭代上限把已有成果全部丢掉
+        forced = self._force_final_answer()
+        if forced:
+            answer = forced
+            steps.append(AgentStep(kind="note", title="迭代上限后强制总结", detail="已禁用工具调用，仅汇总已有结果"))
+            self.on_event(steps[-1])
         self.memory.add({"role": "assistant", "content": answer})
         return AgentResult(
-            answer=answer, steps=steps, iterations=self.config.max_iterations, stopped="max_iterations"
+            answer=answer,
+            steps=steps,
+            iterations=self.config.max_iterations,
+            stopped="max_iterations",
+            mode=effective_mode,
         )
+
+    def _force_final_answer(self) -> str:
+        """迭代上限到达后，让模型基于已有工具结果直接给出结论（不再允许调用工具）。
+
+        返回空字符串表示这次总结也失败，调用方会退回「步骤摘要」。
+        """
+
+        hint = {
+            "role": "user",
+            "content": "已达到本轮最大迭代次数。请直接基于上面已经获得的工具结果给出最终结论，不要再请求调用工具。",
+        }
+        try:
+            response = self.client.chat(self.memory.messages() + [hint], tools=None)
+        except LLMError as exc:
+            self.on_event(
+                AgentStep(kind="error", title="强制总结失败", detail=str(exc), ok=False)
+            )
+            return ""
+        # 离线规则引擎在无工具时会返回「计划」而不是结论，这种情况下退回步骤摘要
+        if response.tool_calls or not response.content.strip():
+            return ""
+        return response.content.strip()
 
     # ------------------------------------------------------------------ 展示
     @staticmethod

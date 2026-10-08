@@ -5,9 +5,13 @@ __pycache__/
 # 会话记忆与测试临时工作区
 .agent_sessions/
 .test_workspaces/
+uploads/
+generated/
 
 # 本地配置
 .env
+.env.*
+!.env.example
 
 # 打包产物
 dist/
@@ -15,5 +19,7 @@ dist/
 
 # 编辑器
 .idea/
-.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
 .DS_Store
